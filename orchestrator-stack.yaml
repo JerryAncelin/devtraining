@@ -1,0 +1,62 @@
+zsh: command not found: ptyhon
+(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % python dbtable.py 
+> Creating table 'Users'...
+  waiting for table to become ACTIVE (usually 5-20s)...
+✓ Table 'Users' is ready
+Generating 100 synthetic user records...
+Writing to 'Users' using batch_writer (auto-chunks at 25/req)...
+  queued 50/100
+  queued 100/100
+✓ Loaded 100 records into 'Users'
+  Table now contains: 100 items
+
+Sample record:
+  login_count: 941
+  created_at: 2025-11-09T01:14:08.307736+00:00
+  credit_balance: 323.82
+  last_login: 2027-08-11T01:14:08.307736+00:00
+  full_name: Justin Torres
+  email: tapiaaaron@hotmail.com
+  country: Gambia
+  city: East Alyssabury
+  user_id: user_00068_c8bf60dd
+  username: stevenvargas
+  subscription_tier: basic
+  preferences: {'newsletter': False, 'theme': 'light', 'language': 'en'}
+  is_active: False
+  phone: (370)424-1038x65719
+  tags: []
+  lifetime_value: 2722.81
+  age: 55
+(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % clear
+(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % git@github.com:JerryAncelin/devtraining.git
+zsh: no such file or directory: git@github.com:JerryAncelin/devtraining.git
+(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % ssh git@github.com:JerryAncelin/devtraining.git
+ssh: Could not resolve hostname github.com:JerryAncelin/devtraining.git: nodename nor servname provided, or not known
+(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % echo "# devtraining" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/JerryAncelin/devtraining.git
+git push -u origin main
+Initialized empty Git repository in /Users/jeremyancelin/.git/
+[main (root-commit) 77324f0] first commit
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+Enumerating objects: 3, done.
+Counting objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 227 bytes | 227.00 KiB/s, done.
+Total 3 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To https://github.com/JerryAncelin/devtraining.git
+ * [new branch]      main -> main
+branch 'main' set up to track 'origin/main'.
+(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % 
+
+
+
+
+
+
+
+
