@@ -1,17 +1,46 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  Orchestrator Lambda creates a uniquely-named S3 bucket, configures an event
-  notification to a processor Lambda, and uploads synthetic JSON data. The
-  upload triggers the processor Lambda via the S3 event.
+Description: |
+  Orchestrator Lambda creates a uniquely-named S3 bucket, configures an event notification to a processor Lambda, and uploads synthetic JSON data. The upload triggers the processor Lambda via the S3 event.
+  Also creates a demo VPC to illustrate Git sync changesets.
 
 Parameters:
   BucketPrefix:
     Type: String
     Default: synthetic-data
-    Description: Prefix for dynamically-created S3 buckets. Final names will be "<prefix>-<uuid>".
-    AllowedPattern: '^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]$'
+    Description: Prefix for dynamically-created S3 buckets. Final names will be
+      "<prefix>-<uuid>".
+    AllowedPattern: ^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]$
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the demo VPC. Change this value, commit, and
+      watch Git sync produce a changeset that replaces the VPC.
+    AllowedPattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$
 
 Resources:
+
+  # ---------------------------------------------------------------------------
+  # Demo VPC — exists purely to illustrate Git sync changesets
+  # ---------------------------------------------------------------------------
+  # Why this is a good demo resource:
+  #   * Single, self-contained resource (no dependencies to untangle).
+  #   * Visible immediately in the VPC console after deploy.
+  #   * Changing the Tag value -> in-place UPDATE (no replacement).
+  #   * Changing VpcCidr      -> REPLACEMENT (delete + create), which is
+  #                              the most dramatic kind of changeset to see.
+  # ---------------------------------------------------------------------------
+  DemoVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-demo-vpc
+        - Key: Purpose
+          Value: git-sync-changeset-demo
 
   # ---------------------------------------------------------------------------
   # Processor Lambda (Lambda B) - invoked by S3 event notifications
@@ -36,12 +65,12 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::${BucketPrefix}-*/*'
+                Resource: !Sub arn:aws:s3:::${BucketPrefix}-*/*
 
   ProcessorFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-processor'
+      FunctionName: !Sub ${AWS::StackName}-processor
       Runtime: python3.12
       Handler: index.lambda_handler
       Role: !GetAtt ProcessorFunctionRole.Arn
@@ -96,8 +125,8 @@ Resources:
                   - s3:GetBucketNotificationConfiguration
                   - s3:PutObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::${BucketPrefix}-*'
-                  - !Sub 'arn:aws:s3:::${BucketPrefix}-*/*'
+                  - !Sub arn:aws:s3:::${BucketPrefix}-*
+                  - !Sub arn:aws:s3:::${BucketPrefix}-*/*
         - PolicyName: GrantS3InvokePermission
           PolicyDocument:
             Version: '2012-10-17'
@@ -112,7 +141,7 @@ Resources:
   OrchestratorFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-orchestrator'
+      FunctionName: !Sub ${AWS::StackName}-orchestrator
       Runtime: python3.12
       Handler: index.lambda_handler
       Role: !GetAtt OrchestratorFunctionRole.Arn
@@ -219,6 +248,12 @@ Outputs:
     Value: !Ref ProcessorFunction
   ProcessorFunctionArn:
     Value: !GetAtt ProcessorFunction.Arn
+  DemoVpcId:
+    Description: ID of the demo VPC (visible in the VPC console).
+    Value: !Ref DemoVpc
+  DemoVpcCidr:
+    Description: CIDR block of the demo VPC.
+    Value: !GetAtt DemoVpc.CidrBlock
   InvokeCommand:
     Description: CLI command to trigger the orchestrator.
-    Value: !Sub 'aws lambda invoke --function-name ${OrchestratorFunction} response.json'
+    Value: !Sub aws lambda invoke --function-name ${OrchestratorFunction} response.json
