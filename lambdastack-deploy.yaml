@@ -1,4 +1,4 @@
-template-file-path: templates/orchestrator-stack.yaml
+template-file-path: ./orchestrator-stack.yaml
 parameters:
   BucketPrefix: synthetic-data
 tags:
