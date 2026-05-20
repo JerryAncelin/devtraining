@@ -1,62 +1,224 @@
-zsh: command not found: ptyhon
-(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % python dbtable.py 
-> Creating table 'Users'...
-  waiting for table to become ACTIVE (usually 5-20s)...
-✓ Table 'Users' is ready
-Generating 100 synthetic user records...
-Writing to 'Users' using batch_writer (auto-chunks at 25/req)...
-  queued 50/100
-  queued 100/100
-✓ Loaded 100 records into 'Users'
-  Table now contains: 100 items
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Orchestrator Lambda creates a uniquely-named S3 bucket, configures an event
+  notification to a processor Lambda, and uploads synthetic JSON data. The
+  upload triggers the processor Lambda via the S3 event.
 
-Sample record:
-  login_count: 941
-  created_at: 2025-11-09T01:14:08.307736+00:00
-  credit_balance: 323.82
-  last_login: 2027-08-11T01:14:08.307736+00:00
-  full_name: Justin Torres
-  email: tapiaaaron@hotmail.com
-  country: Gambia
-  city: East Alyssabury
-  user_id: user_00068_c8bf60dd
-  username: stevenvargas
-  subscription_tier: basic
-  preferences: {'newsletter': False, 'theme': 'light', 'language': 'en'}
-  is_active: False
-  phone: (370)424-1038x65719
-  tags: []
-  lifetime_value: 2722.81
-  age: 55
-(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % clear
-(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % git@github.com:JerryAncelin/devtraining.git
-zsh: no such file or directory: git@github.com:JerryAncelin/devtraining.git
-(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % ssh git@github.com:JerryAncelin/devtraining.git
-ssh: Could not resolve hostname github.com:JerryAncelin/devtraining.git: nodename nor servname provided, or not known
-(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % echo "# devtraining" >> README.md
-git init
-git add README.md
-git commit -m "first commit"
-git branch -M main
-git remote add origin https://github.com/JerryAncelin/devtraining.git
-git push -u origin main
-Initialized empty Git repository in /Users/jeremyancelin/.git/
-[main (root-commit) 77324f0] first commit
- 1 file changed, 1 insertion(+)
- create mode 100644 README.md
-Enumerating objects: 3, done.
-Counting objects: 100% (3/3), done.
-Writing objects: 100% (3/3), 227 bytes | 227.00 KiB/s, done.
-Total 3 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
-To https://github.com/JerryAncelin/devtraining.git
- * [new branch]      main -> main
-branch 'main' set up to track 'origin/main'.
-(.venv) jeremyancelin@Jeremys-MacBook-Air ~ % 
+Parameters:
+  BucketPrefix:
+    Type: String
+    Default: synthetic-data
+    Description: Prefix for dynamically-created S3 buckets. Final names will be "<prefix>-<uuid>".
+    AllowedPattern: '^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]$'
 
+Resources:
 
+  # ---------------------------------------------------------------------------
+  # Processor Lambda (Lambda B) - invoked by S3 event notifications
+  # ---------------------------------------------------------------------------
+  ProcessorFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSyntheticBuckets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${BucketPrefix}-*/*'
 
+  ProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-processor'
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt ProcessorFunctionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import json
+          import boto3
 
+          s3 = boto3.client('s3')
 
+          def lambda_handler(event, context):
+              for record in event.get('Records', []):
+                  bucket = record['s3']['bucket']['name']
+                  key = record['s3']['object']['key']
+                  print(f"Triggered by s3://{bucket}/{key}")
 
+                  obj = s3.get_object(Bucket=bucket, Key=key)
+                  data = json.loads(obj['Body'].read())
+                  print(f"Processed {len(data.get('records', []))} records")
+                  # ...real processing logic goes here
 
+              return {'statusCode': 200}
 
+  # ---------------------------------------------------------------------------
+  # Orchestrator Lambda (Lambda A) - creates the bucket, wires events, uploads
+  # ---------------------------------------------------------------------------
+  OrchestratorFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ManageSyntheticBuckets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:PutBucketNotification
+                  - s3:PutBucketNotificationConfiguration
+                  - s3:GetBucketNotification
+                  - s3:GetBucketNotificationConfiguration
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-*'
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-*/*'
+        - PolicyName: GrantS3InvokePermission
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:GetPolicy
+                Resource: !GetAtt ProcessorFunction.Arn
+
+  OrchestratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-orchestrator'
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt OrchestratorFunctionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          TARGET_LAMBDA_ARN: !GetAtt ProcessorFunction.Arn
+          BUCKET_PREFIX: !Ref BucketPrefix
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import uuid
+          import boto3
+          from datetime import datetime
+          from botocore.exceptions import ClientError
+
+          s3 = boto3.client('s3')
+          lambda_client = boto3.client('lambda')
+
+          TARGET_LAMBDA_ARN = os.environ['TARGET_LAMBDA_ARN']
+          BUCKET_PREFIX = os.environ['BUCKET_PREFIX']
+          REGION = os.environ['AWS_REGION']
+
+          def lambda_handler(event, context):
+              # 1. Create a uniquely-named bucket
+              bucket_name = f"{BUCKET_PREFIX}-{uuid.uuid4().hex[:12]}"
+              try:
+                  if REGION == 'us-east-1':
+                      s3.create_bucket(Bucket=bucket_name)
+                  else:
+                      s3.create_bucket(
+                          Bucket=bucket_name,
+                          CreateBucketConfiguration={'LocationConstraint': REGION}
+                      )
+                  print(f"Created bucket: {bucket_name}")
+              except ClientError as e:
+                  print(f"Bucket creation failed: {e}")
+                  raise
+
+              # 2. Allow S3 to invoke the processor Lambda for this specific bucket
+              statement_id = f"s3invoke-{bucket_name}"
+              try:
+                  lambda_client.add_permission(
+                      FunctionName=TARGET_LAMBDA_ARN,
+                      StatementId=statement_id,
+                      Action='lambda:InvokeFunction',
+                      Principal='s3.amazonaws.com',
+                      SourceArn=f"arn:aws:s3:::{bucket_name}",
+                  )
+              except lambda_client.exceptions.ResourceConflictException:
+                  pass
+
+              # 3. Configure the bucket notification BEFORE uploading
+              s3.put_bucket_notification_configuration(
+                  Bucket=bucket_name,
+                  NotificationConfiguration={
+                      'LambdaFunctionConfigurations': [{
+                          'LambdaFunctionArn': TARGET_LAMBDA_ARN,
+                          'Events': ['s3:ObjectCreated:*'],
+                          'Filter': {
+                              'Key': {
+                                  'FilterRules': [
+                                      {'Name': 'suffix', 'Value': '.json'}
+                                  ]
+                              }
+                          }
+                      }]
+                  }
+              )
+              print(f"Notification configured on {bucket_name}")
+
+              # 4. Generate synthetic data and upload (this triggers the processor)
+              synthetic_data = {
+                  'generated_at': datetime.utcnow().isoformat(),
+                  'records': [
+                      {'id': i, 'value': uuid.uuid4().hex, 'score': i * 1.5}
+                      for i in range(10)
+                  ]
+              }
+              key = f"data/synthetic-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.json"
+              s3.put_object(
+                  Bucket=bucket_name,
+                  Key=key,
+                  Body=json.dumps(synthetic_data),
+                  ContentType='application/json',
+              )
+              print(f"Uploaded s3://{bucket_name}/{key}")
+
+              return {
+                  'statusCode': 200,
+                  'bucket': bucket_name,
+                  'key': key,
+              }
+
+Outputs:
+  OrchestratorFunctionName:
+    Description: Invoke this function to run the pipeline end-to-end.
+    Value: !Ref OrchestratorFunction
+  OrchestratorFunctionArn:
+    Value: !GetAtt OrchestratorFunction.Arn
+  ProcessorFunctionName:
+    Value: !Ref ProcessorFunction
+  ProcessorFunctionArn:
+    Value: !GetAtt ProcessorFunction.Arn
+  InvokeCommand:
+    Description: CLI command to trigger the orchestrator.
+    Value: !Sub 'aws lambda invoke --function-name ${OrchestratorFunction} response.json'
